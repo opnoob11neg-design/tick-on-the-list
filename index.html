@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>名冊上的勾 · The Tick on the List</title>
+<style>
+  :root {
+    --bg: #0b0b0c;
+    --fg: #e6e3dc;
+    --muted: #8d8a83;
+    --line: #2b2a28;
+    --accent: #b23a2e;
+    --slot: #151514;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); }
+  body {
+    font-family: "Noto Serif TC", "PMingLiU", "Songti TC", Georgia, serif;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  #app { max-width: 720px; margin: 0 auto; padding: 56px 16px 96px; min-height: 100%; }
+  #lang {
+    position: fixed; top: 12px; right: 12px; z-index: 5;
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+    padding: 4px 10px; font: inherit; font-size: 14px; cursor: pointer; border-radius: 3px;
+  }
+  #lang:hover { color: var(--fg); border-color: var(--muted); }
+  #mute { right: 64px; }
+  h1 { font-size: clamp(28px, 7vw, 44px); font-weight: 600; letter-spacing: .04em; margin: 0 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 32px; }
+  .para { margin: 0 0 18px; font-size: 18px; opacity: 0; transform: translateY(6px); transition: opacity .9s ease, transform .9s ease; }
+  .para.show { opacity: 1; transform: none; }
+  .para.big { font-size: 22px; }
+  .src { color: var(--muted); font-size: 13px; font-family: system-ui, sans-serif; margin: 6px 0 24px; opacity: 0; transition: opacity .9s; }
+  .src.show { opacity: 1; }
+  .scene-no { color: var(--accent); font-family: system-ui, sans-serif; font-size: 13px; letter-spacing: .2em; margin-bottom: 18px; }
+  .choices { display: flex; flex-direction: column; gap: 10px; margin: 28px 0 8px; opacity: 0; transition: opacity .6s; }
+  .choices.show { opacity: 1; }
+  button.opt, button.next {
+    text-align: left; background: transparent; color: var(--fg); border: 1px solid var(--line);
+    padding: 12px 16px; font: inherit; font-size: 17px; cursor: pointer; border-radius: 3px;
+    transition: border-color .2s, background .2s;
+  }
+  button.opt:hover, button.next:hover { border-color: var(--fg); background: #141413; }
+  button.opt:disabled { cursor: default; opacity: .35; }
+  button.opt.picked { opacity: 1; border-color: var(--accent); }
+  button.next { margin-top: 24px; text-align: center; }
+  .result { color: #cfc9be; font-style: italic; margin: 18px 0 0; opacity: 0; transition: opacity .9s; font-size: 18px; }
+  .result.show { opacity: 1; }
+  .slot {
+    position: relative; width: 100%; aspect-ratio: 16 / 9; background: var(--slot);
+    border: 1px dashed #3a3936; margin: 0 0 28px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    overflow: hidden; color: var(--muted); font-family: system-ui, sans-serif; font-size: 12px; text-align: center; padding: 12px;
+  }
+  .slot img, .slot video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: grayscale(.6) contrast(1.1); }
+  .slot.filled { border: none; }
+  .cap { color: var(--muted); font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.5; margin: 0 0 28px; }
+  .slot .tag { color: var(--accent); letter-spacing: .15em; display: block; margin-bottom: 4px; }
+  form.q { display: flex; flex-direction: column; gap: 26px; margin-top: 12px; }
+  .q label.qt { display: block; margin-bottom: 10px; font-size: 17px; }
+  .scale { display: flex; gap: 8px; flex-wrap: wrap; }
+  .scale input { display: none; }
+  .scale span {
+    display: inline-block; min-width: 46px; text-align: center; padding: 8px 0; border: 1px solid var(--line);
+    cursor: pointer; border-radius: 3px; font-family: system-ui, sans-serif;
+  }
+  .scale input:checked + span { border-color: var(--accent); color: #fff; background: #241311; }
+  .ends { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; font-family: system-ui, sans-serif; margin-top: 4px; max-width: 290px; }
+  textarea {
+    width: 100%; min-height: 96px; background: #111; color: var(--fg); border: 1px solid var(--line);
+    font: inherit; font-size: 16px; padding: 10px; border-radius: 3px;
+  }
+  .err { color: #e07a6f; font-family: system-ui, sans-serif; font-size: 14px; min-height: 1em; }
+  .refs { font-family: system-ui, sans-serif; font-size: 13px; color: var(--muted); line-height: 1.6; }
+  .refs li { margin-bottom: 6px; }
+  .flash { animation: flash 1.2s ease; }
+  @keyframes flash { 0% { background: #3a0f0b; } 100% { background: var(--bg); } }
+  .count { font-size: clamp(56px, 18vw, 120px); color: var(--accent); line-height: 1; margin: 12px 0 6px; font-family: system-ui, sans-serif; }
+  @media (max-width: 480px) {
+    .para { font-size: 17px; }
+    .para.big { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+<button id="lang" type="button">EN</button>
+<button id="mute" type="button" class="" style="position:fixed;top:12px;right:64px;z-index:5;background:transparent;color:var(--muted);border:1px solid var(--line);padding:4px 10px;font:inherit;font-size:14px;cursor:pointer;border-radius:3px">♪</button>
+<main id="app"></main>
+
+<script>
+/* ===== 設定：Google 表單接上後填這裡 =====
+   formAction：表單的 formResponse 網址
+   entries：每個欄位的 entry.xxxxx
+   留空時是測試模式，回答只存在這台瀏覽器。 */
+const CONFIG = {
+  formAction: "",
+  entries: {
+    age: "", pre1: "", pre2: "", post1: "", post2: "", open: "", choices: "", lang: ""
+  }
+};
+
+/* ===== 素材位：組長把檔案路徑或網址填進 src，type 填 img 或 video ===== */
+/* 候選素材、授權和其他選項見 03_素材清單.md；cap 是放圖後顯示在下方的中英圖說（換圖要一起換） */
+const MEDIA = {
+  village: { src: "media/village_karakax_list.png", type: "img", hint: "推薦：Commons〈Karakax List VOA 2020-02-19.png〉",
+    cap: { zh: "2020 年外流的新疆墨玉縣（Karakax）政府內部名單第一頁。照片：美國之音（公有領域）", en: "First page of the leaked Karakax County government list. Photo: Voice of America, 2020 (public domain)" } },
+  school:  { src: "media/school_karakax_cns_480p.webm", type: "video", hint: "推薦：Commons〈新疆教培中心学员的“小目标”…webm〉（中國新聞網，CC BY 4.0）",
+    cap: { zh: "中國官媒 2019 年拍攝的墨玉縣「職業技能教育培訓中心」。影片：中國新聞網（CC BY 4.0）", en: "A \"vocational skills education and training centre\" in Karakax, filmed by Chinese state media in 2019. Video: China News Service (CC BY 4.0)" } },
+  train:   { src: "media/train_hotan_station.jpg", type: "img", hint: "推薦：Commons〈Hotan Railway Station (Xinjiang).jpg〉",
+    cap: { zh: "和田火車站，2019 年（示意）。照片：Prcshaw（CC BY-SA 4.0）", en: "Hotan railway station, 2019 (illustrative). Photo: Prcshaw (CC BY-SA 4.0)" } },
+  factory: { src: "media/factory_aspi_fig1.jpg", type: "img", hint: "已放 ASPI p.8 圖 1；《華盛頓郵報》原照抓不到（網站擋自動連線），要換請自己存檔",
+    cap: { zh: "2019 年 10 月，青島泰光製鞋的維吾爾工人揮舞國旗。來源：中國民族宗教網，引自 ASPI p.8", en: "Uyghur workers at Qingdao Taekwang Shoes waving Chinese flags, October 2019. Source: China Ethnic Religion Net, via ASPI p.8" } },
+  night:   { src: "media/night_aspi_fig3.jpg", type: "img", hint: "推薦：ASPI 修正版 p.9 圖 3（石榴籽夜校開班）",
+    cap: { zh: "2019 年 6 月，泰光廠內少數民族「石榴籽」夜校開班儀式。來源：萊西統一戰線，引自 ASPI p.9", en: "Opening of the \"Pomegranate Seed\" night school at Taekwang, June 2019. Source: Laixi United Front, via ASPI p.9" } },
+  dorm:    { src: "media/dorm_aspi_fig4.jpg", type: "img", hint: "推薦：ASPI 修正版 p.10 圖 4（青年之家）",
+    cap: { zh: "泰光廠內給少數民族工人的「青年之家」學習室。來源：掌上萊西，引自 ASPI p.10", en: "The \"Home of the Youth\" study room for ethnic minority workers at Taekwang. Source: In the Palm of Laixi, via ASPI p.10" } },
+  letter:  { src: "media/letter_handwriting_blurred.jpg", type: "img", hint: "已放 Commons〈Chinese handwriting.jpg〉模糊版",
+    cap: { zh: "示意照片，不是那封信。2018 年 1 月，和田媒體刊出泰光 130 名維吾爾工人以中文寫的感謝信（ASPI p.11）。照片：Bdubbs09（CC BY-SA 4.0，已模糊處理）", en: "Illustrative photo, not the actual letter. In January 2018 Hotan media published a letter of thanks in Mandarin from 130 Uyghur workers at Taekwang (ASPI p.11). Photo: Bdubbs09 (CC BY-SA 4.0, blurred)" } },
+  box:     { src: "media/box_quanzhou_assembly.jpg", type: "img", hint: "推薦：Commons〈Lasting and assembly hall of a shoe factory, Quanzhou.jpg〉",
+    cap: { zh: "福建泉州一間鞋廠的成型組裝區（示意，不是泰光）。照片：DOING SHOES（CC BY 4.0）", en: "Lasting and assembly hall of a footwear factory in Quanzhou, Fujian (illustrative; not Taekwang). Photo: DOING SHOES (CC BY 4.0)" } },
+  shoes:   { src: "media/shoes_white_sneakers.jpg", type: "img", hint: "已放 Commons〈White sneakers on asphalt (Unsplash).jpg〉",
+    cap: { zh: "照片：Nadine Shaabana（CC0）", en: "Photo: Nadine Shaabana (CC0)" } }
+};
+
+/* ===== 文字（中／英） ===== */
+const T = {
+  zh: {
+    langBtn: "EN",
+    title: "名冊上的勾",
+    sub: "一個關於新疆勞動轉移的故事",
+    intro: [
+      "你接下來會扮演米赫莉（Mihray），一名來自和田的維吾爾女性。",
+      "她是虛構的。她遇到的每一件事都不是。每一段下方都標了出處，主要來自澳洲戰略政策研究所（ASPI）2020 年的報告《Uyghurs for Sale》2022 年修正版。",
+      "大約五到八分鐘。"
+    ],
+    start: "開始",
+    ageQ: "你的年齡",
+    ageOpts: ["未滿 18 歲", "18 歲以上"],
+    underage: "謝謝你。這個遊戲只收 18 歲以上的回答，你可以繼續玩，但結尾不會送出任何資料。",
+    preTitle: "開始前，兩個問題",
+    q1: "你覺得你手上的衣服、鞋子、手機，跟新疆強迫勞動有關的可能性多大？",
+    q1ends: ["幾乎不可能", "非常可能"],
+    q2: "下次買東西前，你有多願意查一下這個品牌的供應鏈？",
+    q2ends: ["完全不願意", "非常願意"],
+    needAll: "每一題都要選。",
+    go: "繼續",
+    cont: "繼續",
+    sceneLabel: n => `第 ${n} 關`,
+    endA: n => `你做了 ${n} 個選擇。`,
+    endB: "沒有一個改變了故事。",
+    endC: [
+      "這就是報告說的：這些轉移計畫的條件「強烈顯示是強迫勞動」。表面上有選項，實際上沒有。",
+      "報告追到至少 82 個國際品牌的供應鏈，而且提醒：在中國任何地方製造的產品，都可能經過這些工人的手，不只新疆。",
+      "現在，低頭看看你腳上的鞋。"
+    ],
+    endSrc: "ASPI 2022 修正版 p.3、p.4、p.28",
+    postTitle: "最後，同樣兩個問題",
+    openQ: "哪一個時刻讓你印象最深？（可以不填）",
+    submit: "送出",
+    sending: "送出中…",
+    thanks: "謝謝你玩到最後。",
+    testMode: "（測試模式：表單還沒接上，回答只存在這台裝置。）",
+    noSend: "（未滿 18 歲，沒有送出資料。）",
+    refsTitle: "參考資料",
+    again: "再玩一次",
+    disclose: "本遊戲的程式、劇情與文字由 Claude（Anthropic 的 AI）製作。主角與對白為虛構，事件依據下列報告。"
+  },
+  en: {
+    langBtn: "中",
+    title: "The Tick on the List",
+    sub: "A story about labour transfers out of Xinjiang",
+    intro: [
+      "You are about to play Mihray, a Uyghur woman from Hotan.",
+      "She is fictional. Nothing that happens to her is. Each scene cites its source, mainly the Australian Strategic Policy Institute report Uyghurs for Sale (2020; amended edition 2022).",
+      "It takes about five to eight minutes."
+    ],
+    start: "Begin",
+    ageQ: "Your age",
+    ageOpts: ["Under 18", "18 or over"],
+    underage: "Thank you. We only collect answers from people 18 or over. You can still play, but nothing will be sent at the end.",
+    preTitle: "Two questions before you start",
+    q1: "How likely is it that the clothes, shoes or phone you own are connected to forced labour in Xinjiang?",
+    q1ends: ["Very unlikely", "Very likely"],
+    q2: "Next time you buy something, how willing are you to look into the brand's supply chain?",
+    q2ends: ["Not at all", "Very willing"],
+    needAll: "Please answer every question.",
+    go: "Continue",
+    cont: "Continue",
+    sceneLabel: n => `SCENE ${n}`,
+    endA: n => `You made ${n} choices.`,
+    endB: "None of them changed the story.",
+    endC: [
+      "This is what the report means when it says the conditions of these transfers \"strongly suggest forced labour\". There are options on the surface, and none underneath.",
+      "The report traced the transfers to the supply chains of at least 82 global brands, and warned that products made anywhere in China, not only in Xinjiang, may pass through these workers' hands.",
+      "Now look down at your shoes."
+    ],
+    endSrc: "ASPI, amended 2022, pp. 3, 4, 28",
+    postTitle: "Finally, the same two questions",
+    openQ: "Which moment stayed with you most? (optional)",
+    submit: "Submit",
+    sending: "Sending…",
+    thanks: "Thank you for playing to the end.",
+    testMode: "(Test mode: the form isn't connected yet; answers are stored on this device only.)",
+    noSend: "(Under 18: nothing was sent.)",
+    refsTitle: "Sources",
+    again: "Play again",
+    disclose: "The code, story and text of this game were made by Claude, an AI by Anthropic. The protagonist and dialogue are fictional; the events are based on the sources below."
+  }
+};
+
+/* ===== 關卡 ===== */
+const SCENES = [
+  {
+    id: "village", sound: "wind", media: "village",
+    zh: {
+      text: [
+        "幹部拿著名冊走進你家。",
+        "他說你是「富余劳动力」。村口新刷的標語寫著：培訓一批，就業一批，轉移一批。",
+        "他在等你回答。"
+      ],
+      choices: ["「我願意去。」", "「我要留下照顧母親。」"],
+      results: [
+        "他點點頭，在你的名字旁邊打了一個勾。",
+        "他說，你母親，政府會派人照看。然後在你的名字旁邊打了一個勾。"
+      ],
+      src: "ASPI 2022 修正版 p.4、p.6（「富余劳动力」）、p.7（幹部監看工人家屬）、p.13（墨玉縣 2019 年工作報告）"
+    },
+    en: {
+      text: [
+        "A cadre walks into your home holding a list.",
+        "He calls you \"surplus labour\". The freshly painted slogan at the village gate reads: for every batch trained, a batch employed, a batch transferred.",
+        "He is waiting for your answer."
+      ],
+      choices: ["\"I'll go.\"", "\"I need to stay and look after my mother.\""],
+      results: [
+        "He nods, and puts a tick next to your name.",
+        "He says the government will send someone to look in on your mother. Then he puts a tick next to your name."
+      ],
+      src: "ASPI, amended 2022, p.4, p.6 (\"surplus labour\"), p.7 (cadres watching workers' families), p.13 (Karakax 2019 work report)"
+    }
+  },
+  {
+    id: "school", sound: "drone", media: "school",
+    zh: {
+      text: [
+        "你在一間「學校」待了一年。圍牆很高，門口有安檢。",
+        "今天他們宣布：你結業了。",
+        "下一步，是工作。"
+      ],
+      choices: ["問：要去哪裡？", "什麼都不問。"],
+      results: [
+        "沒有人回答你。名單上的名字被一個一個唸出來。",
+        "名單上的名字被一個一個唸出來，其中一個是你。"
+      ],
+      src: "ASPI 2022 修正版 p.4（官方稱學員已「結業」，下一步是工廠）、p.18（伽師縣職業學校「畢業生」被整批轉往安徽，衛星影像顯示擴建安全設施）"
+    },
+    en: {
+      text: [
+        "You have spent a year at a \"school\". The walls are high. There is a security check at the gate.",
+        "Today they announce that you have graduated.",
+        "The next step is work."
+      ],
+      choices: ["Ask: where are we going?", "Ask nothing."],
+      results: [
+        "No one answers. Names on a list are read out, one by one.",
+        "Names on a list are read out, one by one. One of them is yours."
+      ],
+      src: "ASPI, amended 2022, p.4 (officials say trainees have \"graduated\" and move on to factory work), p.18 (\"graduates\" of a Jiashi county vocational school transferred as a group to Anhui; satellite imagery shows added security)"
+    }
+  },
+  {
+    id: "train", sound: "train", media: "train",
+    zh: {
+      text: [
+        "專用列車。整節車廂只有維吾爾人。",
+        "合約是一年，或更久。每五十個人，配一名政府派來的管理員。",
+        "車窗外的戈壁一直沒有變。"
+      ],
+      choices: ["看著窗外。", "閉上眼睛睡。"],
+      results: [
+        "窗玻璃上映出走道。管理員坐在那裡，一直醒著。",
+        "你睡不著。走道上的管理員一直醒著。"
+      ],
+      src: "ASPI 2022 修正版 p.6（專用隔離列車、合約一年以上、每 50 名工人一名管理員）"
+    },
+    en: {
+      text: [
+        "A dedicated train. Everyone in the carriage is Uyghur.",
+        "The contract is for a year or more. For every fifty workers there is one government minder.",
+        "The desert outside the window does not change."
+      ],
+      choices: ["Look out of the window.", "Close your eyes and sleep."],
+      results: [
+        "The glass reflects the aisle. The minder sits there, awake the whole time.",
+        "You can't sleep. The minder in the aisle stays awake the whole time."
+      ],
+      src: "ASPI, amended 2022, p.6 (segregated trains, contracts of a year or more, one minder per 50 workers)"
+    }
+  },
+  {
+    id: "factory", sound: "sewing", media: "factory",
+    zh: {
+      text: [
+        "山東，一間鞋廠。",
+        "瞭望塔。刺網。圍欄上的鐵絲網朝向裡面，不是外面。側門的警務站裝了人臉辨識鏡頭。",
+        "白天，你縫鞋面。"
+      ],
+      choices: ["低頭，繼續縫。", "抬頭，看那個鏡頭。"],
+      results: [
+        "縫紉機的聲音蓋過一切。",
+        "鏡頭也在看你。你低下頭，繼續縫。"
+      ],
+      src: "ASPI 2022 修正版 p.8（青島泰光製鞋，萊西）、p.10（《華盛頓郵報》記者看到的瞭望塔、刺網、向內的鐵絲網與人臉辨識）"
+    },
+    en: {
+      text: [
+        "Shandong. A shoe factory.",
+        "Watchtowers. Razor wire. The fence's barbed wire points inward, not out. The police post at the side gate has facial-recognition cameras.",
+        "By day, you stitch shoe uppers."
+      ],
+      choices: ["Keep your head down and keep sewing.", "Look up at the camera."],
+      results: [
+        "The noise of the machines drowns out everything.",
+        "The camera is looking back. You lower your head and keep sewing."
+      ],
+      src: "ASPI, amended 2022, p.8 (Qingdao Taekwang Shoes, Laixi), p.10 (watchtowers, razor wire, inward-facing barbed wire and facial recognition seen by Washington Post reporters)"
+    }
+  },
+  {
+    id: "night", sound: "drone", media: "night",
+    zh: {
+      text: [
+        "下班之後，是夜校。",
+        "學普通話，唱國歌。老師說，各民族要像石榴籽一樣緊緊抱在一起。",
+        "這間教室叫「石榴籽」。"
+      ],
+      choices: ["去上課。", "跟管理員說你太累了。"],
+      results: [
+        "你跟著唸。聲音很整齊。",
+        "管理員看著你，沒有說話。你想起家鄉的幹部，也正看著你母親。你去上課了。"
+      ],
+      src: "ASPI 2022 修正版 p.6（下班後的普通話課與思想教育）、p.7（幹部監看工人老家家屬）、p.8–9（泰光「石榴籽」夜校）"
+    },
+    en: {
+      text: [
+        "After work comes night school.",
+        "Mandarin lessons. The national anthem. The teacher says every ethnic group must hold together like the seeds of a pomegranate.",
+        "The classroom is called \"Pomegranate Seed\"."
+      ],
+      choices: ["Go to class.", "Tell the minder you're too tired."],
+      results: [
+        "You recite along with the others. The voices are perfectly in time.",
+        "The minder looks at you and says nothing. You think of the cadre back home, watching your mother. You go to class."
+      ],
+      src: "ASPI, amended 2022, p.6 (Mandarin and ideological classes after work), p.7 (cadres watching families back home), pp.8–9 (Taekwang's \"Pomegranate Seed\" night school)"
+    }
+  },
+  {
+    id: "dorm", sound: "drone", media: "dorm",
+    zh: {
+      text: [
+        "警察來搜宿舍，一支一支檢查手機。",
+        "聽說，被搜出古蘭經的人，會被送回營裡三到五年。",
+        "工廠對面那間餐廳，招牌上的「清真」被劃掉了。開齋節，你們不能回家。",
+        "你枕頭下有母親抄給你的一頁經文。"
+      ],
+      choices: ["把它藏得更深。", "自己交出去。"],
+      results: [
+        "他們沒有找到。你一整夜沒有睡。",
+        "他們收走了。你身上，再也沒有家裡的東西。"
+      ],
+      src: "ASPI 2022 修正版 p.7（宗教人權 NGO Bitter Winter 轉述工人說法：搜宿舍、查手機，搜到古蘭經送回營 3–5 年）、p.10（「清真」字樣被劃掉、不能回家過節）"
+    },
+    en: {
+      text: [
+        "Police come to search the dormitory. They check every phone, one by one.",
+        "People say that anyone found with a Quran is sent back to the camp for three to five years.",
+        "Across the road, the word \"halal\" has been crossed out on the restaurant sign. You are not allowed home for the holidays.",
+        "Under your pillow is a page of scripture your mother copied out for you."
+      ],
+      choices: ["Hide it deeper.", "Hand it over yourself."],
+      results: [
+        "They don't find it. You don't sleep all night.",
+        "They take it. You no longer have anything from home."
+      ],
+      src: "ASPI, amended 2022, p.7 (workers quoted by the NGO Bitter Winter: dorm searches, phone checks, 3–5 years in a camp if a Quran is found), p.10 (\"halal\" crossed out, no going home for holidays)"
+    }
+  },
+  {
+    id: "letter", sound: "drone", media: "letter",
+    zh: {
+      text: [
+        "主管發下信紙。",
+        "要寫給家鄉政府的感謝信，用中文寫。寫你過去多窮，現在月薪兩千八百五十元。",
+        "一百三十個人，寫同一封信。"
+      ],
+      choices: ["照著範本寫。", "寫你真正想說的。"],
+      results: [
+        "你寫完了。字很工整。",
+        "你寫了一行，停下來，撕掉，換了一張紙，照著範本寫完。"
+      ],
+      src: "ASPI 2022 修正版 p.11（2018 年 1 月和田媒體刊出泰光 130 名維吾爾工人以中文寫的感謝信，月薪 ¥2,850；ASPI 無法查證薪資與這封信是否出於自願）"
+    },
+    en: {
+      text: [
+        "The supervisor hands out sheets of paper.",
+        "A letter of thanks to the government back home, written in Mandarin. Write how poor you used to be, and that you now earn 2,850 yuan a month.",
+        "A hundred and thirty people, writing the same letter."
+      ],
+      choices: ["Copy the template.", "Write what you really want to say."],
+      results: [
+        "You finish. Your handwriting is very neat.",
+        "You write one line, stop, tear it up, take a fresh sheet, and copy the template."
+      ],
+      src: "ASPI, amended 2022, p.11 (in January 2018 Hotan media published a letter of gratitude in Mandarin from 130 Uyghur workers at Taekwang, citing a monthly wage of ¥2,850; ASPI could not verify the wages or the letter)"
+    }
+  },
+  {
+    id: "box", sound: "sewing", media: "box",
+    zh: {
+      text: [
+        "你縫好的鞋被裝進紙箱。箱子上的標籤，是 Nike。",
+        "這間工廠每年替 Nike 做超過七百萬雙鞋。",
+        "2020 年，Nike 對媒體說，這間工廠剩下的新疆工人「已經全部回家」了。"
+      ],
+      choices: ["回家。", "留下。"],
+      results: [
+        "沒有人問過你。",
+        "沒有人問過你。"
+      ],
+      src: "ASPI 2022 修正版 p.8（泰光每年替 Nike 生產超過 700 萬雙）；Radio Free Asia 2020-07-21（Nike 稱泰光青島廠的新疆員工已全部回家）。他們是否自願回去、回去後如何，沒有獨立查證；ASPI p.29 正是提醒不要讓工人被非自願送回新疆。"
+    },
+    en: {
+      text: [
+        "The shoes you sewed go into a cardboard box. The label on the box says Nike.",
+        "This factory makes more than seven million pairs of shoes for Nike every year.",
+        "In 2020, Nike told reporters that the remaining Xinjiang workers at this factory had \"all gone home\"."
+      ],
+      choices: ["Go home.", "Stay."],
+      results: [
+        "No one asked you.",
+        "No one asked you."
+      ],
+      src: "ASPI, amended 2022, p.8 (Taekwang makes more than 7 million pairs a year for Nike); Radio Free Asia, 21 July 2020 (Nike says the Xinjiang workers at Taekwang's Qingdao plant had all gone home). Whether they went voluntarily, and what happened after, has not been independently verified; ASPI p.29 warns against workers being involuntarily sent back to Xinjiang."
+    }
+  }
+];
+
+const REFS = [
+  "Xu, V. X., Cave, D., Leibold, J., Munro, K., & Ruser, N. (2020). Uyghurs for sale: 'Re-education', forced labour and surveillance beyond Xinjiang (Policy Brief No. 26/2020; amended 11 October 2022). Australian Strategic Policy Institute.",
+  "Radio Free Asia. (2020, July 21). Nike says China-based supplier sent all Uyghur workers home amid forced labor allegations.",
+  "Office of the UN High Commissioner for Human Rights. (2022, August 31). OHCHR Assessment of human rights concerns in the Xinjiang Uyghur Autonomous Region, People's Republic of China."
+];
+
+/* ===== 聲音（全部用程式合成，沒有外部音檔） ===== */
+const Sound = (() => {
+  let ctx = null, master = null, current = null, muted = false;
+  function init() {
+    if (ctx) return;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+  }
+  function noiseBuffer() {
+    const b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return b;
+  }
+  function stop() {
+    if (!current) return;
+    const c = current; current = null;
+    try { c.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.4); } catch (e) {}
+    setTimeout(() => { c.nodes.forEach(n => { try { n.stop ? n.stop() : null; } catch (e) {} }); c.timers.forEach(clearInterval); }, 1500);
+  }
+  function play(kind) {
+    if (!ctx) return;
+    stop();
+    const g = ctx.createGain(); g.gain.value = 0; g.connect(master);
+    g.gain.setTargetAtTime(1, ctx.currentTime, 0.8);
+    const nodes = [], timers = [];
+    // 底下一直有一個低頻嗡聲
+    const drone = ctx.createOscillator(); drone.type = "sine"; drone.frequency.value = 55;
+    const dg = ctx.createGain(); dg.gain.value = kind === "wind" ? 0.05 : 0.12;
+    drone.connect(dg).connect(g); drone.start(); nodes.push(drone);
+    const drone2 = ctx.createOscillator(); drone2.type = "sine"; drone2.frequency.value = 82.4;
+    const dg2 = ctx.createGain(); dg2.gain.value = 0.05; drone2.connect(dg2).connect(g); drone2.start(); nodes.push(drone2);
+    if (kind === "wind") {
+      const n = ctx.createBufferSource(); n.buffer = noiseBuffer(); n.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 500; f.Q.value = 0.7;
+      const ng = ctx.createGain(); ng.gain.value = 0.18;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.12; const lg = ctx.createGain(); lg.gain.value = 300;
+      lfo.connect(lg).connect(f.frequency); lfo.start(); nodes.push(lfo);
+      n.connect(f).connect(ng).connect(g); n.start(); nodes.push(n);
+    }
+    if (kind === "train") {
+      const buf = noiseBuffer();
+      let beat = 0;
+      timers.push(setInterval(() => {
+        const s = ctx.createBufferSource(); s.buffer = buf;
+        const f = ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 180;
+        const e = ctx.createGain(); const t = ctx.currentTime;
+        e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(0.7, t + 0.01); e.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+        s.connect(f).connect(e).connect(g); s.start(t); s.stop(t + 0.3);
+        beat++;
+      }, 330));
+      timers.push(setInterval(() => {}, 1000));
+    }
+    if (kind === "sewing") {
+      const buf = noiseBuffer();
+      timers.push(setInterval(() => {
+        const t = ctx.currentTime;
+        for (let i = 0; i < 6; i++) {
+          const s = ctx.createBufferSource(); s.buffer = buf;
+          const f = ctx.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 2500;
+          const e = ctx.createGain(); const ti = t + i * 0.07;
+          e.gain.setValueAtTime(0.0001, ti); e.gain.exponentialRampToValueAtTime(0.25, ti + 0.004); e.gain.exponentialRampToValueAtTime(0.0001, ti + 0.04);
+          s.connect(f).connect(e).connect(g); s.start(ti); s.stop(ti + 0.05);
+        }
+      }, 900));
+    }
+    current = { gain: g, nodes, timers };
+  }
+  function hit() {
+    if (!ctx || muted) return;
+    const o = ctx.createOscillator(); o.type = "triangle"; o.frequency.value = 41;
+    const e = ctx.createGain(); const t = ctx.currentTime;
+    e.gain.setValueAtTime(0.9, t); e.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+    o.connect(e).connect(master); o.start(t); o.stop(t + 1.7);
+  }
+  function toggle() {
+    muted = !muted;
+    if (master) master.gain.setTargetAtTime(muted ? 0 : 0.5, ctx.currentTime, 0.1);
+    return muted;
+  }
+  return { init, play, stop, hit, toggle };
+})();
+
+/* ===== 狀態 ===== */
+let lang = "zh";
+const state = { age: null, pre1: null, pre2: null, post1: null, post2: null, open: "", choices: [] };
+let screen = "title", sceneIdx = 0;
+
+const app = document.getElementById("app");
+const L = () => T[lang];
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.textContent = html; return e; };
+
+function reveal(nodes, step = 700) {
+  nodes.forEach((n, i) => setTimeout(() => n.classList.add("show"), 150 + i * step));
+  return 150 + nodes.length * step;
+}
+
+function mediaSlot(key) {
+  if (!key) return document.createDocumentFragment();
+  const m = MEDIA[key]; const box = el("div", "slot");
+  if (m && m.src) {
+    box.classList.add("filled");
+    const media = m.type === "video" ? Object.assign(document.createElement("video"), { src: m.src, autoplay: true, muted: true, loop: true, playsInline: true }) : Object.assign(document.createElement("img"), { src: m.src, alt: "" });
+    box.appendChild(media);
+    const capText = m.cap && m.cap[lang];
+    if (capText) {
+      const wrap = document.createDocumentFragment();
+      box.style.marginBottom = "8px";
+      wrap.appendChild(box);
+      wrap.appendChild(el("div", "cap", capText));
+      return wrap;
+    }
+  } else {
+    const t = el("span", "tag", "素材位 / MEDIA SLOT"); box.appendChild(t);
+    box.appendChild(document.createTextNode(m ? m.hint : ""));
+  }
+  return box;
+}
+
+function render() {
+  window.scrollTo(0, 0);
+  app.innerHTML = "";
+  document.getElementById("lang").textContent = L().langBtn;
+  document.documentElement.lang = lang === "zh" ? "zh-Hant" : "en";
+  ({ title: renderTitle, age: renderAge, pre: renderPre, scene: renderScene, end: renderEnd, post: renderPost, done: renderDone })[screen]();
+}
+
+function renderTitle() {
+  app.appendChild(el("h1", null, L().title));
+  app.appendChild(el("p", "sub", L().sub));
+  const ps = L().intro.map(t => { const p = el("p", "para", t); app.appendChild(p); return p; });
+  const b = el("button", "next", L().start);
+  b.onclick = () => { Sound.init(); Sound.play("wind"); screen = "age"; render(); };
+  app.appendChild(b);
+  reveal(ps, 400);
+}
+
+function scaleField(name, q, ends) {
+  const wrap = el("div", "q");
+  wrap.appendChild(el("label", "qt", q));
+  const sc = el("div", "scale");
+  for (let i = 1; i <= 5; i++) {
+    const lab = document.createElement("label");
+    const inp = Object.assign(document.createElement("input"), { type: "radio", name, value: i });
+    if (state[name] == i) inp.checked = true;
+    lab.appendChild(inp); lab.appendChild(el("span", null, String(i)));
+    sc.appendChild(lab);
+  }
+  wrap.appendChild(sc);
+  const e = el("div", "ends"); e.appendChild(el("span", null, ends[0])); e.appendChild(el("span", null, ends[1]));
+  wrap.appendChild(e);
+  return wrap;
+}
+
+function renderAge() {
+  app.appendChild(el("p", "para show big", L().ageQ));
+  const box = el("div", "choices show");
+  L().ageOpts.forEach((t, i) => {
+    const b = el("button", "opt", t);
+    b.onclick = () => {
+      state.age = i === 0 ? "under18" : "18plus";
+      if (i === 0) {
+        app.innerHTML = "";
+        app.appendChild(el("p", "para show", L().underage));
+        const n = el("button", "next", L().go); n.onclick = () => { screen = "scene"; sceneIdx = 0; render(); };
+        app.appendChild(n);
+      } else { screen = "pre"; render(); }
+    };
+    box.appendChild(b);
+  });
+  app.appendChild(box);
+}
+
+function renderPre() {
+  app.appendChild(el("p", "para show big", L().preTitle));
+  const f = el("form", "q");
+  f.appendChild(scaleField("pre1", L().q1, L().q1ends));
+  f.appendChild(scaleField("pre2", L().q2, L().q2ends));
+  const err = el("div", "err"); f.appendChild(err);
+  const b = el("button", "next", L().go); b.type = "submit"; f.appendChild(b);
+  f.onsubmit = ev => {
+    ev.preventDefault();
+    const a = f.querySelector('input[name=pre1]:checked'), c = f.querySelector('input[name=pre2]:checked');
+    if (!a || !c) { err.textContent = L().needAll; return; }
+    state.pre1 = +a.value; state.pre2 = +c.value;
+    screen = "scene"; sceneIdx = 0; render();
+  };
+  app.appendChild(f);
+}
+
+function renderScene() {
+  const s = SCENES[sceneIdx]; const c = s[lang];
+  Sound.play(s.sound);
+  app.appendChild(el("div", "scene-no", L().sceneLabel(sceneIdx + 1)));
+  app.appendChild(mediaSlot(s.media));
+  const ps = c.text.map(t => { const p = el("p", "para", t); app.appendChild(p); return p; });
+  const src = el("div", "src", c.src); app.appendChild(src);
+  const box = el("div", "choices");
+  const res = el("p", "result");
+  const already = state.choices[sceneIdx];
+  c.choices.forEach((t, i) => {
+    const b = el("button", "opt", t);
+    b.onclick = () => {
+      state.choices[sceneIdx] = i;
+      box.querySelectorAll("button").forEach(x => x.disabled = true);
+      b.classList.add("picked");
+      res.textContent = c.results[i];
+      setTimeout(() => res.classList.add("show"), 200);
+      setTimeout(() => { nextBtn.style.visibility = "visible"; }, 1400);
+    };
+    box.appendChild(b);
+  });
+  app.appendChild(box); app.appendChild(res);
+  const nextBtn = el("button", "next", L().cont); nextBtn.style.visibility = "hidden";
+  nextBtn.onclick = () => {
+    sceneIdx++;
+    if (sceneIdx >= SCENES.length) { screen = "end"; }
+    render();
+  };
+  app.appendChild(nextBtn);
+  const t = reveal([...ps, src], 900);
+  setTimeout(() => box.classList.add("show"), t);
+  if (already != null) { // 切換語言時保留已選
+    const b = box.querySelectorAll("button")[already];
+    box.querySelectorAll("button").forEach(x => x.disabled = true);
+    b.classList.add("picked"); res.textContent = c.results[already]; res.classList.add("show"); nextBtn.style.visibility = "visible";
+  }
+}
+
+function renderEnd() {
+  Sound.stop();
+  document.body.classList.remove("flash"); void document.body.offsetWidth; document.body.classList.add("flash");
+  Sound.hit();
+  const n = state.choices.filter(x => x != null).length;
+  const a = el("p", "para big", L().endA(n));
+  const big = el("div", "count para", String(n));
+  const b = el("p", "para big", L().endB);
+  app.appendChild(big); app.appendChild(a); app.appendChild(b);
+  app.appendChild(mediaSlot("shoes"));
+  const ps = L().endC.map(t => { const p = el("p", "para", t); app.appendChild(p); return p; });
+  const src = el("div", "src", L().endSrc); app.appendChild(src);
+  const nx = el("button", "next", L().cont); nx.style.visibility = "hidden";
+  nx.onclick = () => { screen = state.age === "18plus" ? "post" : "done"; render(); };
+  app.appendChild(nx);
+  const t = reveal([big, a, b, ...ps, src], 1100);
+  setTimeout(() => nx.style.visibility = "visible", t);
+}
+
+function renderPost() {
+  app.appendChild(el("p", "para show big", L().postTitle));
+  const f = el("form", "q");
+  f.appendChild(scaleField("post1", L().q1, L().q1ends));
+  f.appendChild(scaleField("post2", L().q2, L().q2ends));
+  const ow = el("div", "q"); ow.appendChild(el("label", "qt", L().openQ));
+  const ta = document.createElement("textarea"); ta.value = state.open; ow.appendChild(ta); f.appendChild(ow);
+  const err = el("div", "err"); f.appendChild(err);
+  const b = el("button", "next", L().submit); b.type = "submit"; f.appendChild(b);
+  f.onsubmit = async ev => {
+    ev.preventDefault();
+    const a = f.querySelector('input[name=post1]:checked'), c = f.querySelector('input[name=post2]:checked');
+    if (!a || !c) { err.textContent = L().needAll; return; }
+    state.post1 = +a.value; state.post2 = +c.value; state.open = ta.value.trim();
+    b.disabled = true; b.textContent = L().sending;
+    await send();
+    screen = "done"; render();
+  };
+  app.appendChild(f);
+}
+
+let sentMode = "";
+async function send() {
+  const record = {
+    age: state.age, pre1: state.pre1, pre2: state.pre2, post1: state.post1, post2: state.post2,
+    open: state.open, choices: state.choices.map(x => x == null ? "-" : x + 1).join(""), lang
+  };
+  if (!CONFIG.formAction) {
+    try { const k = "hra_game_test"; const arr = JSON.parse(localStorage.getItem(k) || "[]"); arr.push({ ...record, t: new Date().toISOString() }); localStorage.setItem(k, JSON.stringify(arr)); } catch (e) {}
+    console.log("[test mode] record", record);
+    sentMode = "test"; return;
+  }
+  const fd = new URLSearchParams();
+  Object.entries(CONFIG.entries).forEach(([k, id]) => { if (id) fd.append(id, record[k] ?? ""); });
+  try { await fetch(CONFIG.formAction, { method: "POST", mode: "no-cors", body: fd }); } catch (e) {}
+  sentMode = "sent";
+}
+
+function renderDone() {
+  Sound.stop();
+  app.appendChild(el("p", "para show big", L().thanks));
+  if (state.age !== "18plus") app.appendChild(el("p", "src show", L().noSend));
+  else if (sentMode === "test") app.appendChild(el("p", "src show", L().testMode));
+  app.appendChild(el("p", "para show", L().disclose));
+  app.appendChild(el("p", "para show", L().refsTitle));
+  const ul = el("ul", "refs"); REFS.forEach(r => ul.appendChild(el("li", null, r))); app.appendChild(ul);
+  const b = el("button", "next", L().again);
+  b.onclick = () => { Object.assign(state, { age: null, pre1: null, pre2: null, post1: null, post2: null, open: "", choices: [] }); sentMode = ""; screen = "title"; render(); };
+  app.appendChild(b);
+}
+
+document.getElementById("lang").onclick = () => { lang = lang === "zh" ? "en" : "zh"; render(); };
+document.getElementById("mute").onclick = e => { Sound.init(); e.target.textContent = Sound.toggle() ? "×" : "♪"; };
+render();
+</script>
+</body>
+</html>
